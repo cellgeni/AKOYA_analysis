@@ -1,3 +1,8 @@
+# Introduction 
+
+AKOYA pipeline is supposed to automate spatial proteomics low-level data processing. It uses only multichannel image as input file to perform image preprocessing, segmentation and intensity extraction to define presence/absence of marker genes for each segmented cell. It is build moslty using [spatialproteomics_cellgeni](https://github.com/cellgeni/spatialproteomics) package which was edited to work with large images (original package - [spatialproteomics](https://github.com/sagar87/spatialproteomics) As output pipline can produce (i) original spatialproteomics file in zarr xarray format; (ii) set of csv files with analysis tables (like cell position, average intensity per cell and binary marker presence tables); (iii) AnnData file, where X matrix is average intensity of each marker gene per cell. You can find examples of output files and how to open them in notebook **open_output_files.ipynb** 
+
+
 # Prepare environment
  Create the conda environment from yaml file and activate:
  
@@ -69,3 +74,13 @@ Optional metadata
 `pixelsize (float or null, optional)` - Microns per full-resolution pixel. If provided, it is used only to create anndata h5ad object
 
 ## Run pipeline
+
+The pipeline depending on image size requires signigicant amount of memory, so it is recommended for full-tissue crop (with ~(20k x 20k) pixels image and 60 channels) to use 200 Gb of memory or more. Example of submission code can be found in **submit_AKOYA_pipeline.sh**. Then one can submit a job simply as:
+
+`bsub < submit_AKOYA_pipeline.sh`
+
+# Run separate steps of the pipeline
+
+To run separetely steps from the pipeline (such as image preprocessing, segmentation or intensity extraction) please use as an example notebook **AKOYA_analysis_steps.ipynb**. Please note, that there we use only some of all available from [spatialproteomics](https://github.com/sagar87/spatialproteomics), if you find to find out more about other options of image preprocessing, segmentation, plottig and celltyping please visit [spatialproteomics documentation](https://sagar87.github.io/spatialproteomics/)
+
+
