@@ -68,7 +68,8 @@ All parameters used in pipeline together with input/output paths should be speci
 
 `save_intermediate_zarr (bool)` - If True, saves intermediate sp_object snapshots to `output_dir/sp_object.zarr` after key steps.
 
-Optional metadata
+### Optional metadata
+
 `normalise_intensity (bool)` - If True, performs z-score normalization per channel across cells and stores:
 
 `pixelsize (float or null, optional)` - Microns per full-resolution pixel. If provided, it is used only to create anndata h5ad object
