@@ -1,0 +1,28 @@
+image_path: /lustre/scratch127/cellgen/cellgeni/tickets/tic-4225/data/ob02832_Scan1.qptiff
+crop_x: [15000, 18000]
+crop_y: [25000, 28000]
+channel_for_segmentation: DAPI
+list_of_channels: ["DAPI", "Keratin 14", "CD107", "CD4", "CD31", "SMA", "CD68", "CD44", "Vimentin", 
+                    "CD66", "E-cadherin", "IDO1", "CD45RO", "IFNG", "CD21", "CD11c", "CD45", "HLA-DR", 
+                    "CD34", "iNOS", "CD38", "Histone H3 (p Ser28)", "CD8", "PCNA", "FOXP3", "CD57", "Ki67", 
+                    "Granzyme-B", "HLA-A", "CD20", "Collagen IV", "CD14", "Pan-Cytokeratin", "PD-1", "VISTA", 
+                    "Keratin 8/18", "TCF-1", "Lag3", "Caveolin", "ICOS", "TOX", "EpCAM", "PD-L1", 
+                    "CD163", "Keratin 5", "CD3e", "ER", "Beta-actin", "Bcl-2", "CD79a", "CD56", "GP100", 
+                    "TP63", "b-Catenin1", "CD209", "MPO", "CD11b", "CD39", "SOX2", "Podoplanin", "CD206"]
+list_of_markers: ['CD31', 'CD4', 'SMA', 'CD68', 'CD66', 'CD45RO', 'IFNG','CD206', 'CD209',
+              'CD11c', 'CD8', 'IDO1', 'CD21', 'CD14', 'VISTA', 'Granzyme-B', 'Ki67',
+              'TOX', 'TCF-1', 'CD163', 'CD3e', 'CD79a', 'MPO', 'CD39', 'SOX2', 'CD11b']
+segmentation_label_expansion: 5
+min_area: 50
+max_area: 1000
+normalise_intensity: True
+save_intermediate_plots: True
+number_intermediate_plots: 5
+size_intermediate_plots: 500
+list_of_genes_intermediate_plots: ["CD11b", "CD45RO", "CD68", "CD31"]
+save_individual_marker_presence_plots:  True
+fraction_of_positive_pixels: 0.5
+output_dir: run_AKOYA_out4
+save_intermediate_zarr: True
+list_output_formats: ['zarr', 'csv', 'h5ad']
+pixelsize: 0.51
