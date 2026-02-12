@@ -3,7 +3,7 @@
  
 ` conda env create -f environment.yml `
 
-` conda activate spatialproteomics_stardist `
+` conda activate sp_env `
 
  Install spatialproteomics package from cellgeni fork:
  
