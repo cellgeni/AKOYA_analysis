@@ -9,7 +9,8 @@
 #BSUB -e "logs/error%J.log"
 
 
-module load ISG/conda
-conda activate ./sp_env
+module load cellgen/singularity
 export PYTHONNOUSERSITE=1
-python bin/run_AKOYA.py conf_files/conf_BK22-SKI-27-FO-1-S34-D1.yaml
+singularity exec \
+    -B /nfs,/lustre \
+    python bin/run_AKOYA.py conf_files/conf_BK22-SKI-27-FO-1-S34-D1.yaml
