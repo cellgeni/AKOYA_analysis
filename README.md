@@ -4,15 +4,7 @@ AKOYA pipeline is supposed to automate spatial proteomics low-level data process
 
 
 # Environment
- Create Docker container using [Dockerfile](https://github.com/cellgeni/AKOYA_analysis/blob/main/container/Dockerfile))
- 
-` conda env create -f environment.yml `
-
-` conda activate sp_env `
-
- Install spatialproteomics package from cellgeni fork:
- 
-` python -m pip install "git+https://github.com/cellgeni/spatialproteomics.git" `
+ Create Docker container using [Dockerfile](https://github.com/cellgeni/AKOYA_analysis/blob/main/container/Dockerfile). If you run it on farm, please use singularity container : `/nfs/cellgeni/singularity/images/spatialproteomics.sif`
 
 # Run whole pipeline
 ## Prepare configuration file
@@ -76,12 +68,17 @@ All parameters used in pipeline together with input/output paths should be speci
 
 ## Run pipeline
 
-The pipeline depending on image size requires signigicant amount of memory, so it is recommended for full-tissue crop (with ~(20k x 20k) pixels image and 60 channels) to use 200 Gb of memory or more. Example of submission code can be found in **submit_AKOYA_pipeline.sh**. Then one can submit a job simply as:
+The pipeline depending on image size requires signigicant amount of memory, so it is recommended for full-tissue crop (with ~(20k x 20k) pixels image and 60 channels) to use 200 Gb of memory or more. Example of submission code can be found in [submit_AKOYA_pipeline.sh](https://github.com/cellgeni/AKOYA_analysis/blob/main/templates/submit_AKOYA_pipeline.sh). Then one can submit a job simply as:
 
 `bsub < submit_AKOYA_pipeline.sh`
 
+## Run pipeline for many samples
+
+In case you want to run the pipeline for many samples, the most annoying part is to prepare all separate configuration files. If you want to keep all parameters the same, you literally need to change in each conf file only "image_path" and "output_dir". You can do it automatically (if you have one example of conf file with all parameters tuned) using notebook [prepare_all_conf](https://github.com/cellgeni/AKOYA_analysis/blob/main/templates/prepare_all_conf.ipynb). And then you can run all of them by submitting number of jobs with [submit_all_AKOYA_jobs.sh](https://github.com/cellgeni/AKOYA_analysis/blob/main/templates/submit_all_AKOYA_jobs.sh)
+
+
 # Run separate steps of the pipeline
 
-To run separetely steps from the pipeline (such as image preprocessing, segmentation or intensity extraction) please use as an example notebook **AKOYA_analysis_steps.ipynb**. Please note, that there we use only some of all available from [spatialproteomics](https://github.com/sagar87/spatialproteomics), if you find to find out more about other options of image preprocessing, segmentation, plottig and celltyping please visit [spatialproteomics documentation](https://sagar87.github.io/spatialproteomics/)
+To run separetely steps from the pipeline (such as image preprocessing, segmentation or intensity extraction) please use as an example notebook [AKOYA_analysis_steps](https://github.com/cellgeni/AKOYA_analysis/blob/main/AKOYA_analysis_steps.ipynb). Please note, that there we use only some of all available from [spatialproteomics](https://github.com/sagar87/spatialproteomics), if you find to find out more about other options of image preprocessing, segmentation, plottig and celltyping please visit [spatialproteomics documentation](https://sagar87.github.io/spatialproteomics/)
 
 
