@@ -3,8 +3,8 @@
 AKOYA pipeline is supposed to automate spatial proteomics low-level data processing. It uses only multichannel image as input file to perform image preprocessing, segmentation and intensity extraction to define presence/absence of marker genes for each segmented cell. It is build moslty using [spatialproteomics_cellgeni](https://github.com/cellgeni/spatialproteomics) package which was edited to work with large images (original package - [spatialproteomics](https://github.com/sagar87/spatialproteomics) As output pipline can produce (i) original spatialproteomics file in zarr xarray format; (ii) set of csv files with analysis tables (like cell position, average intensity per cell and binary marker presence tables); (iii) AnnData file, where X matrix is average intensity of each marker gene per cell. You can find examples of output files and how to open them in notebook **open_output_files.ipynb** 
 
 
-# Prepare environment
- Create the conda environment from yaml file and activate:
+# Environment
+ Create Docker container using [Dockerfile](https://github.com/cellgeni/AKOYA_analysis/blob/main/container/Dockerfile))
  
 ` conda env create -f environment.yml `
 
