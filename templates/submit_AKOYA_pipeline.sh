@@ -13,4 +13,5 @@ module load cellgen/singularity
 export PYTHONNOUSERSITE=1
 singularity exec \
     -B /nfs,/lustre \
+    /lustre/scratch127/cellgen/cellgeni/tickets/tic-4640/actions/AKOYA_pipeline/AKOYA_analysis/spatialproteomics.sif \
     python bin/run_AKOYA.py conf_files/conf_BK22-SKI-27-FO-1-S34-D1.yaml
