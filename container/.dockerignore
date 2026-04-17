@@ -1,0 +1,9 @@
+sp_env
+env_archive/*.tar.gz
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.tmp
