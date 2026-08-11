@@ -65,6 +65,10 @@ def plot_marker_celltype_pairs_from_spobject(
     out_dir: str,
     dpi: int = 200,
     expr_cmap: str = "Reds",
+    raw_layer_key: Optional[str] = "_image_raw",
+    segmentation_key: str = "_segmentation",
+    binary_df: Optional[pd.DataFrame] = None,
+    positive_source_label: Optional[str] = None,
     bbox: Optional[Tuple[int, int, int, int]] = None,  # (x0, y0, x1, y1)
     downscale: int = 4,
     grey_level: float = 0.85,
@@ -76,8 +80,9 @@ def plot_marker_celltype_pairs_from_spobject(
 ) -> List[str]:
     """
     For each marker->celltype:
-      left: expression image for marker from sp_object['_image'].sel(channels=marker)
-      right: segmentation-based mask of cells positive for marker (from get_layer_as_df: '{marker}_binarized')
+      left: raw expression image for marker before preprocessing, when raw_layer_key exists
+      middle: expression image for marker from sp_object['_image'].sel(channels=marker)
+      right: segmentation-based mask of cells positive for marker (from get_layer_as_df or binary_df)
              positive cells colored with the chosen colormap; negatives are grey.
 
     Features:
@@ -103,9 +108,22 @@ def plot_marker_celltype_pairs_from_spobject(
     # Numeric segmentation IDs aligned with rows
     label_ids = _get_numeric_label_ids(layer_df)
 
+    if binary_df is not None:
+        cell_df = binary_df.copy()
+        if pd.api.types.is_integer_dtype(label_ids.index):
+            try:
+                cell_df.index = pd.Index(pd.to_numeric(cell_df.index), name=cell_df.index.name).astype(int)
+            except (TypeError, ValueError):
+                pass
+    else:
+        cell_df = layer_df
+
     # Image cube and segmentation
     img_cube = sp_object["_image"]           # dims: ('channels','y','x')
-    seg = sp_object["_segmentation"]         # dims: ('y','x')
+    raw_img_cube = sp_object[raw_layer_key] if raw_layer_key and raw_layer_key in sp_object else None
+    if segmentation_key not in sp_object:
+        raise KeyError(f"Segmentation layer '{segmentation_key}' was not found in sp_object.")
+    seg = sp_object[segmentation_key]        # dims: ('y','x')
 
     # Channel coordinate values
     channel_vals = [str(x) for x in img_cube.coords["channels"].values]
@@ -114,7 +132,7 @@ def plot_marker_celltype_pairs_from_spobject(
     channel_map_norm = {_norm_name(c): c for c in channel_vals}
 
     # For binarized columns, make a normalized map too
-    df_cols = list(layer_df.columns)
+    df_cols = list(cell_df.columns)
     df_col_norm_map = {_norm_name(c): c for c in df_cols}
 
     # Color choices
@@ -145,12 +163,12 @@ def plot_marker_celltype_pairs_from_spobject(
 
         bin_col = None
 
-        if wanted_bin in layer_df.columns:
+        if wanted_bin in cell_df.columns:
             bin_col = wanted_bin
         else:
             # try channel name version
             alt = f"{ch}_binarized"
-            if alt in layer_df.columns:
+            if alt in cell_df.columns:
                 bin_col = alt
             elif match_names_fuzzily:
                 # fuzzy: normalize and look up
@@ -165,20 +183,32 @@ def plot_marker_celltype_pairs_from_spobject(
 
         if bin_col is None:
             if verbose:
-                print(f"Skipping {marker}->{celltype}: no '{marker}_binarized' column found in get_layer_as_df()")
+                print(f"Skipping {marker}->{celltype}: no '{marker}_binarized' column found in the binary table")
             continue
 
         # --- Load 2D expression image for this channel (pull only one channel) ---
+        raw_expr_img = None
+        if raw_img_cube is not None:
+            raw_expr_img = np.asarray(raw_img_cube.sel(channels=ch).values)
         expr_img = np.asarray(img_cube.sel(channels=ch).values)   # (y,x) uint8
         seg_img = np.asarray(seg.values)                          # (y,x) int32
 
         # --- Optional crop ---
         if bbox is not None:
             x0, y0, x1, y1 = bbox
+            if raw_expr_img is not None:
+                raw_expr_img = raw_expr_img[y0:y1, x0:x1]
             expr_img = expr_img[y0:y1, x0:x1]
             seg_img = seg_img[y0:y1, x0:x1]
 
         # --- Downscale expression and normalize for display ---
+        if raw_expr_img is not None:
+            raw_expr_ds = _downscale_image_mean(raw_expr_img.astype(np.float32), downscale)
+            raw_vmin = 0.0
+            raw_vmax = float(np.percentile(raw_expr_ds, vmax_percentile)) if raw_expr_ds.size else 1.0
+            if raw_vmax <= raw_vmin:
+                raw_vmax = raw_vmin + 1.0
+
         expr_ds = _downscale_image_mean(expr_img.astype(np.float32), downscale)
         vmin = 0.0
         vmax = float(np.percentile(expr_ds, vmax_percentile)) if expr_ds.size else 1.0
@@ -186,8 +216,12 @@ def plot_marker_celltype_pairs_from_spobject(
             vmax = vmin + 1.0
 
         # --- Build positive-cell mask using segmentation IDs ---
-        pos_rows = layer_df[layer_df[bin_col].astype(bool)]
-        pos_label_ids = label_ids.loc[pos_rows.index].unique()
+        pos_rows = cell_df[cell_df[bin_col].fillna(0).astype(bool)]
+        pos_index = pos_rows.index.intersection(label_ids.index)
+        if verbose and len(pos_index) != len(pos_rows):
+            missing_n = len(pos_rows) - len(pos_index)
+            print(f"Skipping {missing_n} positive rows for {marker}: no matching segmentation label id.")
+        pos_label_ids = label_ids.loc[pos_index].unique()
 
         if pos_label_ids.size == 0:
             mask = np.zeros_like(seg_img, dtype=np.uint8)
@@ -202,22 +236,35 @@ def plot_marker_celltype_pairs_from_spobject(
         mask_rgb[mask_ds.astype(bool)] = pos_rgb
 
         # --- Plot ---
-        fig, axes = plt.subplots(1, 2, figsize=(10, 5))
-        ax1, ax2 = axes
+        if raw_expr_img is not None:
+            fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+            ax0, ax1, ax2 = axes
+
+            raw_im = ax0.imshow(raw_expr_ds, cmap=expr_cmap, vmin=raw_vmin, vmax=raw_vmax)
+            ax0.set_title(f"{ch} raw expression")
+            ax0.axis("off")
+            if add_colorbar:
+                fig.colorbar(raw_im, ax=ax0, fraction=0.046, pad=0.04)
+        else:
+            fig, axes = plt.subplots(1, 2, figsize=(10, 5))
+            ax1, ax2 = axes
 
         im = ax1.imshow(expr_ds, cmap=expr_cmap, vmin=vmin, vmax=vmax)
-        ax1.set_title(f"{ch} expression")
+        ax1.set_title(f"{ch} processed expression")
         ax1.axis("off")
         if add_colorbar:
             fig.colorbar(im, ax=ax1, fraction=0.046, pad=0.04)
 
         ax2.imshow(mask_rgb)
-        ax2.set_title(f"{celltype} positives ({marker})")
+        source_text = f" from {positive_source_label}" if positive_source_label else ""
+        ax2.set_title(f"{celltype} positives{source_text} ({marker})")
         ax2.axis("off")
 
         if roi_name:
-            ax1.set_title(f"{roi_name}_{ch} expression")
-            ax2.set_title(f"{roi_name}_{celltype} positives ({marker})")
+            if raw_expr_img is not None:
+                ax0.set_title(f"{roi_name}_{ch} raw expression")
+            ax1.set_title(f"{roi_name}_{ch} processed expression")
+            ax2.set_title(f"{roi_name}_{celltype} positives{source_text} ({marker})")
 
         fig.tight_layout()
         if roi_name:

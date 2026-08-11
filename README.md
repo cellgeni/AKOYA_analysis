@@ -1,6 +1,6 @@
 # Introduction 
 
-AKOYA pipeline is supposed to automate spatial proteomics low-level data processing. It uses only multichannel image as input file to perform image preprocessing, segmentation and intensity extraction to define presence/absence of marker genes for each segmented cell. It is build moslty using [spatialproteomics_cellgeni](https://github.com/cellgeni/spatialproteomics) package which was edited to work with large images (original package - [spatialproteomics](https://github.com/sagar87/spatialproteomics) As output pipline can produce (i) original spatialproteomics file in zarr xarray format; (ii) set of csv files with analysis tables (like cell position, average intensity per cell and binary marker presence tables); (iii) AnnData file, where X matrix is average intensity of each marker gene per cell. You can find examples of output files and how to open them in notebook **open_output_files.ipynb** 
+AKOYA pipeline automates low-level spatial proteomics processing from a multichannel image: preprocessing, segmentation, per-cell intensity extraction, and positive/negative marker calls. It is built mostly using [spatialproteomics_cellgeni](https://github.com/cellgeni/spatialproteomics), which was adapted for large images (original package: [spatialproteomics](https://github.com/sagar87/spatialproteomics)). Outputs can include (i) a spatialproteomics object in Zarr format; (ii) CSV tables containing cell positions, per-cell intensity summaries, and marker-presence calls; and (iii) an AnnData file. `adata.X` remains the transformed mean-intensity matrix for backwards compatibility, while the additional per-cell statistics are stored in `adata.obs`. See **open_output_files.ipynb** for examples.
 
 
 # Environment
@@ -31,6 +31,8 @@ All parameters used in pipeline together with input/output paths should be speci
 
 `segmentation_label_expansion (int or falsy)` - If truthy, expands segmentation labels by this radius (pixels) using expand_segmentation
 
+`stardist_scale (float, optional)` - Image scale passed to StarDist (default: `3`, preserving the original pipeline behaviour). For cells that are split into multiple objects, try a smaller value such as `1`, `0.75`, or `0.5`; this reduces the apparent cell size seen by the model. This option changes segmentation itself, whereas `segmentation_label_expansion` only expands masks after segmentation.
+
 `min_area (int or falsy)` - If truthy, filters out segmented objects with area <= min_area.
 
 `max_area (int or falsy)` - If truthy, filters out segmented objects with area >= max_area.
@@ -45,11 +47,83 @@ All parameters used in pipeline together with input/output paths should be speci
 
 `list_of_genes_intermediate_plots (list[str])` - Channel names to display in intermediate ROI plots (alongside DAPI).
 
+Marker-vs-celltype plots saved by `save_individual_marker_presence_plots` include raw marker expression before preprocessing, processed marker expression after thresholding/filtering, and the called positive cells.
+
 ### Binary marker presence / label thresholding
 
 `save_individual_marker_presence_plots (bool)` - Whether to plot marker-vs-celltype (binary label) maps.
 
-`fraction_of_positive_pixels (float)` - Threshold applied to the `_percentage_positive` layer for each marker. Applied the same percentage for all channels
+`fraction_of_positive_pixels (float)` - Backwards-compatible default threshold applied to the fraction of non-zero pixels. It is used for markers/compartments without a matching entry in `positive_cell_rules`.
+
+`manual_marker_thresholds (dict[str, float], optional)` - Per-channel overrides for image preprocessing thresholds, for example `{CD8: 1200, "PD-L1": 0.995}`. Channels not listed here keep the automatic Otsu threshold. Values below 1 are interpreted as relative channel quantiles; values greater than or equal to 1 are interpreted as absolute intensity thresholds.
+
+`split_signal_nuclei_cytoplasm (bool, optional)` - If True, also quantifies nuclei and, when `segmentation_label_expansion` is set, cytoplasm. `whole_cell` means the expanded/combined cell mask (nucleus plus cytoplasm). Whole-cell mean intensity remains in `adata.X`; backwards-compatible transformed compartment means are written to `adata.layers["nuclei_intensity"]` and `adata.layers["cytoplasm_intensity"]`.
+
+### Per-cell intensity statistics
+
+Statistics are computed from processed pixels after image thresholding and median filtering. For every image channel and each available compartment (`whole_cell`, plus `nuclei` and `cytoplasm` when enabled), the pipeline writes these raw processed-pixel statistics to `adata.obs`:
+
+- `mean`
+- `median`
+- `std` (population standard deviation, `ddof=0`)
+- `variance` (population variance, `ddof=0`)
+- `percentage_positive` (fraction of pixels greater than zero)
+- every configured quantile
+
+`intensity_quantiles (list[float], optional)` - Quantiles to calculate. Values must be between 0 and 1. The default is `[0.5, 0.75, 0.9, 0.95]`.
+
+Columns use the unambiguous form `<channel>__<compartment>__<metric>`. For example:
+
+```text
+CD8__whole_cell__mean
+CD8__whole_cell__quantile_0.9
+CD8__nuclei__median
+CD8__cytoplasm__variance
+```
+
+The same matrices are exported to Zarr/CSV with names such as `_intensity_median`, `_intensity_median_nuclei`, and `_intensity_quantile_0_9_cytoplasm`.
+
+### Configurable positive/negative calls
+
+`positive_cell_rules (dict, optional)` - Selects the source statistic and threshold independently for every marker. With `{}` (the default), all calls use `fraction_of_positive_pixels`, preserving the previous behaviour. Supported operators are `>=` (default), `>`, `<=`, and `<`.
+
+A rule containing `metric` applies to all available compartments:
+
+```yaml
+positive_cell_rules:
+  CD8:
+    metric: quantile_0.9
+    threshold: 25
+  CD163:
+    metric: median
+    operator: ">"
+    threshold: 12
+```
+
+Rules can differ between whole cell, nucleus, and cytoplasm:
+
+```yaml
+positive_cell_rules:
+  PD-L1:
+    whole_cell: {metric: median, threshold: 12}
+    nuclei: {metric: mean, threshold: 8}
+    cytoplasm: {metric: percentage_positive, threshold: 0.3}
+```
+
+You may also reference an exact `adata.obs` source column. `{marker}`, `{channel}`, and `{compartment}` placeholders are expanded automatically. Existing observation columns such as `area` can also be used:
+
+```yaml
+positive_cell_rules:
+  CD8:
+    column: "CD8__{compartment}__std"
+    threshold: 4
+  PD-L1:
+    column: area
+    operator: ">="
+    threshold: 150
+```
+
+Calls are stored as integer 0/1 columns named `<marker>__<compartment>__positive` in `adata.obs`. They are also available as DataFrames in `adata.obsm["marker_presence_whole_cell"]`, `adata.obsm["marker_presence_nuclei"]`, and `adata.obsm["marker_presence_cytoplasm"]`. The resolved source column, operator, and threshold are recorded in `adata.uns["akoya_positive_cell_rules"]`. When no custom rules are supplied, the historical `*_ct` fields are retained as well.
 
 
 ### Output control
@@ -59,6 +133,8 @@ All parameters used in pipeline together with input/output paths should be speci
 `list_output_formats (list[str])` - Which outputs to save. Supported values in this script: ["zarr", "h5ad", "csv"]
 
 `save_intermediate_zarr (bool)` - If True, saves intermediate sp_object snapshots to `output_dir/sp_object.zarr` after key steps.
+
+`save_omero_segmentation_csv (bool, optional)` - If True, writes OMERO-compatible polygon tables to `output_dir/omero_segmentation_csv/`. One CSV is generated for `whole_cell` and, when their masks are available, `nuclei` and `cytoplasm`. Each file begins with the OMERO fields `object`, `label`, `score`, `confidence_score`, and `polygon`; `polygon` contains a closed WKT string in the form `POLYGON ((x y, ...))`. All `adata.obs` columns are appended, together with one categorical `label-<marker>` column per marker containing `positive` or `negative` for that compartment.
 
 ### Optional metadata
 
@@ -80,5 +156,3 @@ In case you want to run the pipeline for many samples, the most annoying part is
 # Run separate steps of the pipeline
 
 To run separetely steps from the pipeline (such as image preprocessing, segmentation or intensity extraction) please use as an example notebook [AKOYA_analysis_steps](https://github.com/cellgeni/AKOYA_analysis/blob/main/AKOYA_analysis_steps.ipynb). Please note, that there we use only some of all available from [spatialproteomics](https://github.com/sagar87/spatialproteomics), if you find to find out more about other options of image preprocessing, segmentation, plottig and celltyping please visit [spatialproteomics documentation](https://sagar87.github.io/spatialproteomics/)
-
-
